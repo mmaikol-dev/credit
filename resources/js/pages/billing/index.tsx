@@ -7,6 +7,7 @@ import {
     Filter,
     MoreHorizontal,
     Pencil,
+    Phone,
     PlusCircle,
     Search,
     Signal,
@@ -217,8 +218,9 @@ export default function BillingPage({
                                     Wallet Top Up
                                 </CardTitle>
                                 <CardDescription>
-                                    Add funds to increase available airtime
-                                    credit.
+                                    Trigger Mpesa STK push to top up your
+                                    wallet. Account reference is mapped
+                                    automatically to your company.
                                 </CardDescription>
                             </div>
                             <Dialog
@@ -238,8 +240,9 @@ export default function BillingPage({
                                     <DialogHeader>
                                         <DialogTitle>Top Up Wallet</DialogTitle>
                                         <DialogDescription>
-                                            Add funds to your company airtime
-                                            wallet.
+                                            Enter phone number and amount.
+                                            Account reference is derived
+                                            securely from your company ID.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <Form
@@ -249,7 +252,28 @@ export default function BillingPage({
                                     >
                                         {({ processing, errors }) => (
                                             <>
-                                                <div className="grid gap-2">
+                                                <div className="grid gap-2 md:col-span-2">
+                                                    <Label htmlFor="phone_number">
+                                                        Mpesa Phone Number
+                                                    </Label>
+                                                    <div className="relative">
+                                                        <Phone className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+                                                        <Input
+                                                            id="phone_number"
+                                                            name="phone_number"
+                                                            placeholder="254712345678"
+                                                            className="pl-9"
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <InputError
+                                                        message={
+                                                            errors.phone_number
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-2 md:col-span-1">
                                                     <Label htmlFor="amount">
                                                         Amount (KES)
                                                     </Label>
@@ -257,27 +281,13 @@ export default function BillingPage({
                                                         id="amount"
                                                         name="amount"
                                                         type="number"
-                                                        min="10"
+                                                        min="1"
                                                         step="0.01"
                                                         placeholder="5000"
                                                         required
                                                     />
                                                     <InputError
                                                         message={errors.amount}
-                                                    />
-                                                </div>
-
-                                                <div className="grid gap-2 md:col-span-2">
-                                                    <Label htmlFor="note">
-                                                        Note (optional)
-                                                    </Label>
-                                                    <Input
-                                                        id="note"
-                                                        name="note"
-                                                        placeholder="Mpesa top-up ref"
-                                                    />
-                                                    <InputError
-                                                        message={errors.note}
                                                     />
                                                 </div>
 
@@ -289,7 +299,7 @@ export default function BillingPage({
                                                         {processing && (
                                                             <Spinner className="size-4" />
                                                         )}
-                                                        Top Up Balance
+                                                        Initiate STK Push
                                                     </Button>
                                                 </div>
                                             </>

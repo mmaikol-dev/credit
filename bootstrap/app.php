@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/b2c/timeout',
             'api/mpesa/b2b/result',
             'api/mpesa/b2b/timeout',
+            'api/mpesa/stk/callback',
         ]);
 
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);

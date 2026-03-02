@@ -56,4 +56,9 @@ class Company extends Model
     {
         return $this->hasMany(AirtimeSchedule::class);
     }
+
+    public function mpesaStkTopUpTransactions(): HasMany
+    {
+        return $this->hasMany(MpesaStkTopUpTransaction::class);
+    }
 }

@@ -70,6 +70,14 @@ return [
         'b2b_callback_basic_auth_password' => env('MPESA_B2B_CALLBACK_BASIC_AUTH_PASSWORD'),
         'b2b_retry_attempts' => env('MPESA_B2B_RETRY_ATTEMPTS', 3),
         'timeout' => env('MPESA_TIMEOUT', 30),
+        'stk_shortcode' => env('MPESA_STK_SHORTCODE'),
+        'stk_passkey' => env('MPESA_STK_PASSKEY'),
+        'stk_callback_url' => env('MPESA_STK_CALLBACK_URL'),
+        'stk_initiator_name' => env('MPESA_STK_INITIATOR_NAME'),
+        'stk_timeout' => env('MPESA_STK_TIMEOUT', 30),
+        'stk_url' => env('MPESA_STK_URL'),
+        'stk_retry_attempts' => env('MPESA_STK_RETRY_ATTEMPTS', 3),
+        'stk_callback_allowed_ips' => array_filter(array_map('trim', explode(',', (string) env('MPESA_STK_CALLBACK_ALLOWED_IPS', '')))),
     ],
 
 ];

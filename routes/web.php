@@ -10,7 +10,9 @@ use App\Http\Controllers\MpesaB2BCallbackController;
 use App\Http\Controllers\MpesaB2BController;
 use App\Http\Controllers\MpesaB2CCallbackController;
 use App\Http\Controllers\MpesaB2CController;
+use App\Http\Controllers\MpesaStkTopUpController;
 use App\Http\Middleware\EnsureMpesaCallbackRequest;
+use App\Http\Middleware\EnsureMpesaStkCallbackRequest;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
@@ -29,7 +31,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('airtime/schedules/{airtimeSchedule}', [AirtimeScheduleController::class, 'update'])->name('airtime.schedules.update');
     Route::delete('airtime/schedules/{airtimeSchedule}', [AirtimeScheduleController::class, 'destroy'])->name('airtime.schedules.destroy');
     Route::get('billing', [BillingController::class, 'index'])->name('billing.index');
-    Route::post('billing/top-ups', [BillingController::class, 'store'])->name('billing.top-ups.store');
+    Route::post('billing/top-ups', [MpesaStkTopUpController::class, 'store'])->name('billing.top-ups.store');
     Route::patch('billing/transactions/{companyBillingTransaction}', [BillingController::class, 'updateTransaction'])->name('billing.transactions.update');
     Route::delete('billing/transactions/{companyBillingTransaction}', [BillingController::class, 'destroyTransaction'])->name('billing.transactions.destroy');
     Route::get('company/users', [CompanyUserController::class, 'index'])->name('company.users.index');
@@ -47,6 +49,9 @@ Route::post('api/b2c/timeout', [MpesaB2CCallbackController::class, 'timeout'])->
 Route::middleware([EnsureMpesaCallbackRequest::class])->group(function () {
     Route::post('api/mpesa/b2b/result', [MpesaB2BCallbackController::class, 'result'])->name('mpesa.b2b.result');
     Route::post('api/mpesa/b2b/timeout', [MpesaB2BCallbackController::class, 'timeout'])->name('mpesa.b2b.timeout');
+});
+Route::middleware([EnsureMpesaStkCallbackRequest::class])->group(function () {
+    Route::post('api/mpesa/stk/callback', [MpesaStkTopUpController::class, 'callback'])->name('mpesa.stk.callback');
 });
 
 require __DIR__.'/settings.php';

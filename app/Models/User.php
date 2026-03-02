@@ -69,4 +69,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(AirtimeSchedule::class);
     }
+
+    public function mpesaStkTopUpTransactions(): HasMany
+    {
+        return $this->hasMany(MpesaStkTopUpTransaction::class);
+    }
 }
