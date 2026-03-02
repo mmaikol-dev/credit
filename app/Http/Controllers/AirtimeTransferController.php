@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreAirtimeTransferRequest;
+use App\Http\Requests\UpdateAirtimeTransferRequest;
 use App\Models\AirtimeTransfer;
 use App\Models\Company;
 use App\Models\CompanyBillingTransaction;
+use App\Services\Airtime\AirtimeTransferNotifier;
 use App\Services\Airtime\StatumAirtimeClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -16,7 +18,15 @@ use Throwable;
 
 class AirtimeTransferController extends Controller
 {
-    public function __construct(private readonly StatumAirtimeClient $statumAirtimeClient) {}
+    /**
+     * @var list<string>
+     */
+    private const array RETRYABLE_RESULT_CODES = ['408', '429', '500', '502', '503', '504'];
+
+    public function __construct(
+        private readonly StatumAirtimeClient $statumAirtimeClient,
+        private readonly AirtimeTransferNotifier $airtimeTransferNotifier,
+    ) {}
 
     public function index(): Response
     {
@@ -38,6 +48,9 @@ class AirtimeTransferController extends Controller
                     'sender' => $transfer->sender,
                     'amount' => $transfer->amount,
                     'status' => $transfer->status,
+                    'provider_message' => $transfer->result_description ?? $transfer->provider_response_description,
+                    'can_delete' => in_array($transfer->status, ['queued', 'failed'], true)
+                        && ((is_array($transfer->meta) ? ($transfer->meta['billing_debited'] ?? false) : false) !== true),
                     'created_at' => $transfer->created_at?->toDateTimeString(),
                 ]),
         ]);
@@ -115,6 +128,13 @@ class AirtimeTransferController extends Controller
                 'status' => 'failed',
                 'meta' => [
                     'exception' => $throwable->getMessage(),
+                    'billing_debited' => false,
+                    'billing_reversed' => false,
+                    'retryable' => true,
+                    'retry_attempts' => 0,
+                    'next_retry_at' => now()->addMinutes(10)->toISOString(),
+                    'escalated' => false,
+                    'escalated_at' => null,
                 ],
             ]);
 
@@ -125,6 +145,12 @@ class AirtimeTransferController extends Controller
                 'error' => $throwable->getMessage(),
                 'exception' => $throwable::class,
             ]);
+
+            $this->airtimeTransferNotifier->notifyCompanyStakeholders(
+                $airtimeTransfer->fresh(),
+                'retry_scheduled',
+                'Provider call failed. The transfer has been queued for retry.'
+            );
 
             if ($request->expectsJson()) {
                 return response()->json([
@@ -142,16 +168,42 @@ class AirtimeTransferController extends Controller
 
         $airtimeTransfer->update([
             'status' => $isAccepted ? 'accepted' : 'failed',
-            'external_reference' => $response['transaction_id'] ?? null,
+            'external_reference' => $response['transaction_id'] ?? $response['request_id'] ?? null,
             'provider_status' => $response['status'] ?? null,
-            'provider_response_code' => $response['response_code'] ?? null,
-            'provider_response_description' => $response['response_description'] ?? null,
+            'provider_response_code' => $response['response_code'] ?? $response['status_code'] ?? null,
+            'provider_response_description' => $response['response_description'] ?? $response['description'] ?? null,
             'meta' => [
                 'provider_response' => $response,
                 'billing_debited' => false,
                 'billing_reversed' => false,
+                'retryable' => false,
+                'retry_attempts' => 0,
+                'next_retry_at' => null,
+                'escalated' => false,
+                'escalated_at' => null,
             ],
         ]);
+
+        if (! $isAccepted) {
+            $providerCode = $airtimeTransfer->provider_response_code;
+            $isRetryable = in_array((string) $providerCode, self::RETRYABLE_RESULT_CODES, true);
+            $airtimeTransfer->update([
+                'meta' => [
+                    ...($airtimeTransfer->meta ?? []),
+                    'retryable' => $isRetryable,
+                    'retry_attempts' => 0,
+                    'next_retry_at' => $isRetryable ? now()->addMinutes(10)->toISOString() : null,
+                    'escalated' => ! $isRetryable,
+                    'escalated_at' => ! $isRetryable ? now()->toISOString() : null,
+                ],
+            ]);
+
+            $this->airtimeTransferNotifier->notifyCompanyStakeholders(
+                $airtimeTransfer->fresh(),
+                $isRetryable ? 'retry_scheduled' : 'failed',
+                $airtimeTransfer->provider_response_description
+            );
+        }
 
         Log::info('airtime.transfer.provider_response', [
             'transfer_id' => $airtimeTransfer->id,
@@ -208,6 +260,59 @@ class AirtimeTransferController extends Controller
         return back()
             ->with('status', $isAccepted ? 'Airtime request accepted.' : 'Airtime request rejected.')
             ->with('status_type', $isAccepted ? 'success' : 'error');
+    }
+
+    public function update(UpdateAirtimeTransferRequest $request, AirtimeTransfer $airtimeTransfer): RedirectResponse
+    {
+        $companyId = $request->user()?->company_id;
+
+        abort_unless($companyId !== null, 404);
+        abort_unless($airtimeTransfer->company_id === $companyId, 404);
+
+        $airtimeTransfer->update([
+            'sender' => $request->filled('sender') ? $request->string('sender')->toString() : null,
+        ]);
+
+        Log::info('airtime.transfer.updated', [
+            'transfer_id' => $airtimeTransfer->id,
+            'company_id' => $companyId,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        return back()
+            ->with('status', 'Airtime transfer updated successfully.')
+            ->with('status_type', 'success');
+    }
+
+    public function destroy(AirtimeTransfer $airtimeTransfer): RedirectResponse
+    {
+        $user = request()->user();
+        $companyId = $user?->company_id;
+
+        abort_unless($companyId !== null, 404);
+        abort_unless($airtimeTransfer->company_id === $companyId, 404);
+
+        $meta = is_array($airtimeTransfer->meta) ? $airtimeTransfer->meta : [];
+        $wasDebited = ($meta['billing_debited'] ?? false) === true;
+
+        if ($wasDebited || ! in_array($airtimeTransfer->status, ['queued', 'failed'], true)) {
+            return back()
+                ->with('status', 'Only queued or failed non-debited transfers can be deleted.')
+                ->with('status_type', 'error');
+        }
+
+        $transferId = $airtimeTransfer->id;
+        $airtimeTransfer->delete();
+
+        Log::info('airtime.transfer.deleted', [
+            'transfer_id' => $transferId,
+            'company_id' => $companyId,
+            'user_id' => $user?->id,
+        ]);
+
+        return back()
+            ->with('status', 'Airtime transfer deleted successfully.')
+            ->with('status_type', 'success');
     }
 
     private function resolveCompanyId(): ?int

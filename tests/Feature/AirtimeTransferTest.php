@@ -1,10 +1,13 @@
 <?php
 
 use App\Models\AirtimeTransfer;
+use App\Models\AirtimeWebhookEvent;
 use App\Models\Company;
 use App\Models\CompanyBillingTransaction;
 use App\Models\User;
+use App\Notifications\AirtimeTransferStatusNotification;
 use App\Services\Airtime\StatumAirtimeClient;
+use Illuminate\Support\Facades\Notification;
 use Mockery\MockInterface;
 
 test('authenticated users can submit airtime transfers', function () {
@@ -64,6 +67,7 @@ test('airtime transfer payload is validated', function () {
 });
 
 test('webhook updates transfer status', function () {
+    Notification::fake();
     config()->set('services.statum.webhook_secret', 'secret-token');
 
     $transfer = AirtimeTransfer::factory()->create([
@@ -72,10 +76,9 @@ test('webhook updates transfer status', function () {
     ]);
 
     $response = $this->postJson(route('airtime.webhook', ['token' => 'secret-token']), [
-        'transaction_id' => 'sttm_abc123',
-        'status' => 'SUCCESS',
-        'result_code' => '00',
-        'result_description' => 'Delivered',
+        'request_id' => 'sttm_abc123',
+        'result_code' => '200',
+        'result_desc' => 'You have topped up 254721553678 with Ksh. 50.',
     ]);
 
     $response->assertNoContent();
@@ -83,8 +86,159 @@ test('webhook updates transfer status', function () {
     $transfer->refresh();
 
     expect($transfer->status)->toBe('completed')
-        ->and($transfer->result_code)->toBe('00')
-        ->and($transfer->result_description)->toBe('Delivered');
+        ->and($transfer->result_code)->toBe('200')
+        ->and($transfer->result_description)->toBe('You have topped up 254721553678 with Ksh. 50.')
+        ->and($transfer->provider_response_description)->toBe('You have topped up 254721553678 with Ksh. 50.');
+
+    expect(AirtimeWebhookEvent::query()->where('external_reference', 'sttm_abc123')->count())->toBe(1);
+    Notification::assertSentTo($transfer->user, AirtimeTransferStatusNotification::class);
+});
+
+test('webhook maps failed payload message and reverses debited balance', function () {
+    Notification::fake();
+    config()->set('services.statum.webhook_secret', 'secret-token');
+
+    $company = Company::factory()->create([
+        'airtime_balance' => 100,
+    ]);
+
+    $user = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $transfer = AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+        'amount' => 50,
+        'status' => 'accepted',
+        'external_reference' => 'sttm_failed_001',
+        'meta' => [
+            'billing_debited' => true,
+            'billing_reversed' => false,
+        ],
+    ]);
+
+    $response = $this->postJson(route('airtime.webhook', ['token' => 'secret-token']), [
+        'request_id' => 'sttm_failed_001',
+        'charge' => 1.5,
+        'account_balance' => 5000,
+        'result_code' => '500',
+        'result_desc' => 'Top up failed due to upstream timeout.',
+    ]);
+
+    $response->assertNoContent();
+
+    $transfer->refresh();
+    $company->refresh();
+
+    expect($transfer->status)->toBe('failed')
+        ->and($transfer->result_code)->toBe('500')
+        ->and($transfer->result_description)->toBe('Top up failed due to upstream timeout.')
+        ->and($transfer->provider_response_description)->toBe('Top up failed due to upstream timeout.')
+        ->and((float) $company->airtime_balance)->toBe(150.0)
+        ->and(CompanyBillingTransaction::query()->where('type', 'reversal')->count())->toBe(1);
+
+    $event = AirtimeWebhookEvent::query()->where('external_reference', 'sttm_failed_001')->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->charge)->toBe('1.50')
+        ->and($event?->account_balance)->toBe('5000.00');
+    Notification::assertSentTo($user, AirtimeTransferStatusNotification::class);
+});
+
+test('webhook is unavailable when secret is missing', function () {
+    config()->set('services.statum.webhook_secret', null);
+
+    $response = $this->postJson(route('airtime.webhook'), [
+        'transaction_id' => 'sttm_abc123',
+        'status' => 'SUCCESS',
+    ]);
+
+    $response->assertServiceUnavailable();
+});
+
+test('failed webhook callback schedules retry for retryable provider codes', function () {
+    Notification::fake();
+    config()->set('services.statum.webhook_secret', 'secret-token');
+
+    $company = Company::factory()->create();
+    $user = User::factory()->companyAdmin()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $transfer = AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+        'status' => 'accepted',
+        'external_reference' => 'sttm_retry_001',
+        'meta' => [
+            'billing_debited' => false,
+            'billing_reversed' => false,
+            'retry_attempts' => 0,
+        ],
+    ]);
+
+    $response = $this->postJson(route('airtime.webhook', ['token' => 'secret-token']), [
+        'request_id' => 'sttm_retry_001',
+        'result_code' => '503',
+        'result_desc' => 'Service temporarily unavailable.',
+    ]);
+
+    $response->assertNoContent();
+
+    $transfer->refresh();
+
+    expect($transfer->status)->toBe('failed')
+        ->and(data_get($transfer->meta, 'retryable'))->toBeTrue()
+        ->and(data_get($transfer->meta, 'next_retry_at'))->not->toBeNull();
+});
+
+test('retry command retries failed retryable transfers', function () {
+    Notification::fake();
+
+    $this->mock(StatumAirtimeClient::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('send')
+            ->once()
+            ->andReturn([
+                'accepted' => true,
+                'request_id' => 'sttm_retry_success',
+                'status_code' => '200',
+                'description' => 'Retry accepted by provider.',
+                'status' => 'ACCEPTED',
+            ]);
+    });
+
+    $company = Company::factory()->create([
+        'airtime_balance' => 1000,
+    ]);
+    $user = User::factory()->companyAdmin()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $transfer = AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+        'status' => 'failed',
+        'amount' => 100,
+        'meta' => [
+            'billing_debited' => false,
+            'billing_reversed' => false,
+            'retryable' => true,
+            'retry_attempts' => 0,
+            'next_retry_at' => now()->subMinute()->toISOString(),
+        ],
+    ]);
+
+    $this->artisan('airtime:transfers:retry')->assertSuccessful();
+
+    $transfer->refresh();
+    $company->refresh();
+
+    expect($transfer->status)->toBe('accepted')
+        ->and($transfer->external_reference)->toBe('sttm_retry_success')
+        ->and(data_get($transfer->meta, 'retry_attempts'))->toBe(1)
+        ->and(data_get($transfer->meta, 'retryable'))->toBeFalse()
+        ->and((float) $company->airtime_balance)->toBe(900.0);
 });
 
 test('authenticated users can view transfer airtime page', function () {
@@ -137,4 +291,50 @@ test('airtime transfer fails when company balance is insufficient', function () 
 
     $response->assertUnprocessable()
         ->assertJsonPath('message', 'Insufficient airtime balance. Please top up first.');
+});
+
+test('authenticated user can update transfer sender', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $transfer = AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'sender' => 'OLDNAME',
+        'status' => 'failed',
+    ]);
+
+    $response = $this->actingAs($user)->patch(route('airtime.transfers.update', $transfer), [
+        'sender' => 'NEWNAME',
+    ]);
+
+    $response->assertRedirect();
+
+    $transfer->refresh();
+
+    expect($transfer->sender)->toBe('NEWNAME');
+});
+
+test('authenticated user can delete failed non debited transfer', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $transfer = AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'status' => 'failed',
+        'meta' => [
+            'billing_debited' => false,
+        ],
+    ]);
+
+    $response = $this->actingAs($user)->delete(route('airtime.transfers.destroy', $transfer));
+
+    $response->assertRedirect();
+
+    $this->assertDatabaseMissing('airtime_transfers', [
+        'id' => $transfer->id,
+    ]);
 });

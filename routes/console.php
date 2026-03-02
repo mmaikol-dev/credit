@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('airtime:schedules:process')->everyMinute();
+Schedule::command('airtime:transfers:retry')->everyFiveMinutes();

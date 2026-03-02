@@ -69,3 +69,46 @@ test('non admin users cannot add company users', function () {
 
     $response->assertForbidden();
 });
+
+test('company admin can update company user', function () {
+    $company = Company::factory()->create();
+    $admin = User::factory()->companyAdmin()->create([
+        'company_id' => $company->id,
+    ]);
+    $member = User::factory()->create([
+        'company_id' => $company->id,
+        'is_company_admin' => false,
+    ]);
+
+    $response = $this->actingAs($admin)->patch(route('company.users.update', $member), [
+        'name' => 'Updated Member',
+        'email' => 'updated.member@example.com',
+        'is_company_admin' => true,
+    ]);
+
+    $response->assertRedirect();
+
+    $member->refresh();
+
+    expect($member->name)->toBe('Updated Member')
+        ->and($member->email)->toBe('updated.member@example.com')
+        ->and($member->is_company_admin)->toBeTrue();
+});
+
+test('company admin can delete a member from their company', function () {
+    $company = Company::factory()->create();
+    $admin = User::factory()->companyAdmin()->create([
+        'company_id' => $company->id,
+    ]);
+    $member = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $response = $this->actingAs($admin)->delete(route('company.users.destroy', $member));
+
+    $response->assertRedirect();
+
+    $this->assertDatabaseMissing('users', [
+        'id' => $member->id,
+    ]);
+});

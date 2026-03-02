@@ -1,5 +1,14 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, CalendarClock, FolderGit2, LayoutGrid, Smartphone, Users, Wallet } from 'lucide-react';
+import {
+    BookOpen,
+    CalendarClock,
+    FolderGit2,
+    HandCoins,
+    LayoutGrid,
+    Smartphone,
+    Users,
+    Wallet,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -13,11 +22,12 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { dashboard } from '@/routes';
 import { index as airtimeSchedulesIndex } from '@/routes/airtime/schedules';
 import { index as airtimeTransfersIndex } from '@/routes/airtime/transfers';
 import { index as billingIndex } from '@/routes/billing';
 import { index as companyUsersIndex } from '@/routes/company/users';
-import { dashboard } from '@/routes';
+import { index as mpesaB2CIndex } from '@/routes/mpesa/b2c';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -40,6 +50,11 @@ const mainNavItems: NavItem[] = [
         title: 'Billing',
         href: billingIndex(),
         icon: Wallet,
+    },
+    {
+        title: 'Send Money',
+        href: mpesaB2CIndex(),
+        icon: HandCoins,
     },
     {
         title: 'Team',

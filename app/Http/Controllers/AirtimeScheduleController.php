@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreAirtimeScheduleRequest;
+use App\Http\Requests\UpdateAirtimeScheduleRequest;
 use App\Models\AirtimeSchedule;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -42,6 +43,7 @@ class AirtimeScheduleController extends Controller
                     'last_run_at' => $schedule->last_run_at?->toDateTimeString(),
                     'status' => $schedule->status,
                     'occurrences_count' => $schedule->occurrences_count,
+                    'max_occurrences' => $schedule->max_occurrences,
                 ]),
         ]);
     }
@@ -87,6 +89,68 @@ class AirtimeScheduleController extends Controller
 
         return back()
             ->with('status', 'Airtime schedule created successfully.')
+            ->with('status_type', 'success');
+    }
+
+    public function update(UpdateAirtimeScheduleRequest $request, AirtimeSchedule $airtimeSchedule): RedirectResponse
+    {
+        $user = $request->user();
+        $companyId = $user?->company_id;
+
+        abort_unless($companyId !== null, 404);
+        abort_unless($airtimeSchedule->company_id === $companyId, 404);
+
+        $nextRunAt = Carbon::parse(sprintf(
+            '%s %s',
+            $request->string('start_date')->toString(),
+            $request->string('send_time')->toString(),
+        ));
+
+        $airtimeSchedule->update([
+            'recipient' => $request->string('recipient')->toString(),
+            'sender' => $request->filled('sender') ? $request->string('sender')->toString() : null,
+            'amount' => number_format((float) $request->input('amount'), 2, '.', ''),
+            'schedule_type' => $request->string('schedule_type')->toString(),
+            'recurrence' => $request->filled('recurrence') ? $request->string('recurrence')->toString() : null,
+            'start_date' => $request->string('start_date')->toString(),
+            'send_time' => $request->string('send_time')->toString().':00',
+            'next_run_at' => $nextRunAt->toDateTimeString(),
+            'max_occurrences' => $request->integer('max_occurrences') ?: null,
+        ]);
+
+        Log::info('airtime.schedule.updated', [
+            'schedule_id' => $airtimeSchedule->id,
+            'company_id' => $companyId,
+            'user_id' => $user?->id,
+            'schedule_type' => $airtimeSchedule->schedule_type,
+            'recurrence' => $airtimeSchedule->recurrence,
+            'next_run_at' => $airtimeSchedule->next_run_at?->toDateTimeString(),
+        ]);
+
+        return back()
+            ->with('status', 'Airtime schedule updated successfully.')
+            ->with('status_type', 'success');
+    }
+
+    public function destroy(AirtimeSchedule $airtimeSchedule): RedirectResponse
+    {
+        $user = request()->user();
+        $companyId = $user?->company_id;
+
+        abort_unless($companyId !== null, 404);
+        abort_unless($airtimeSchedule->company_id === $companyId, 404);
+
+        $scheduleId = $airtimeSchedule->id;
+        $airtimeSchedule->delete();
+
+        Log::info('airtime.schedule.deleted', [
+            'schedule_id' => $scheduleId,
+            'company_id' => $companyId,
+            'user_id' => $user?->id,
+        ]);
+
+        return back()
+            ->with('status', 'Airtime schedule deleted successfully.')
             ->with('status_type', 'success');
     }
 

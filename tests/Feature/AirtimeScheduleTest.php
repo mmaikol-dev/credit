@@ -147,3 +147,52 @@ test('processing command keeps recurring schedules active and moves next run', f
         ->and($schedule->occurrences_count)->toBe(1)
         ->and($schedule->next_run_at)->not->toBeNull();
 });
+
+test('authenticated user can update airtime schedule', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $schedule = AirtimeSchedule::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+        'recipient' => '254712345678',
+        'schedule_type' => 'one_time',
+    ]);
+
+    $response = $this->actingAs($user)->patch(route('airtime.schedules.update', $schedule), [
+        'recipient' => '254700000123',
+        'amount' => 75,
+        'schedule_type' => 'one_time',
+        'start_date' => now()->addDays(2)->toDateString(),
+        'send_time' => '10:15',
+    ]);
+
+    $response->assertRedirect();
+
+    $schedule->refresh();
+
+    expect($schedule->recipient)->toBe('254700000123')
+        ->and((float) $schedule->amount)->toBe(75.0);
+});
+
+test('authenticated user can delete airtime schedule', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    $schedule = AirtimeSchedule::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+    ]);
+
+    $response = $this->actingAs($user)->delete(route('airtime.schedules.destroy', $schedule));
+
+    $response->assertRedirect();
+
+    $this->assertDatabaseMissing('airtime_schedules', [
+        'id' => $schedule->id,
+    ]);
+});

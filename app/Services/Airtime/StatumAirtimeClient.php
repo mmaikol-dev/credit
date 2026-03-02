@@ -12,8 +12,11 @@ class StatumAirtimeClient
      * @return array{
      *     accepted: bool,
      *     transaction_id: string,
+     *     request_id: string,
      *     response_code: string,
+     *     status_code: string,
      *     response_description: string,
+     *     description: string,
      *     status: string
      * }
      *
@@ -51,8 +54,11 @@ class StatumAirtimeClient
         return [
             'accepted' => $accepted,
             'transaction_id' => $response->requestId,
+            'request_id' => $response->requestId,
             'response_code' => (string) $response->statusCode,
+            'status_code' => (string) $response->statusCode,
             'response_description' => $response->description,
+            'description' => $response->description,
             'status' => $accepted ? 'ACCEPTED' : 'FAILED',
         ];
     }

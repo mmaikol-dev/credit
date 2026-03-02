@@ -1,16 +1,67 @@
 import { Form, Head, Link } from '@inertiajs/react';
+import {
+    ArrowDownUp,
+    Calendar,
+    CircleDollarSign,
+    FileText,
+    Filter,
+    MoreHorizontal,
+    Pencil,
+    PlusCircle,
+    Search,
+    Signal,
+    Trash2,
+    Wallet,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import ToastNotification from '@/components/ui/toast-notification';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
+import { dashboard } from '@/routes';
 import { index as airtimeTransfersIndex } from '@/routes/airtime/transfers';
 import { index } from '@/routes/billing';
 import { store as storeTopUp } from '@/routes/billing/top-ups';
-import { dashboard } from '@/routes';
+import { destroy, update } from '@/routes/billing/transactions';
 import type { BreadcrumbItem } from '@/types';
 
 type Company = {
@@ -25,6 +76,7 @@ type BillingTransaction = {
     amount: string;
     balance_after: string;
     note: string | null;
+    can_delete: boolean;
     created_at: string | null;
 };
 
@@ -43,135 +95,575 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
+const typeVariant = (
+    type: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    const normalized = type.toLowerCase();
+
+    if (
+        normalized === 'top_up' ||
+        normalized === 'credit' ||
+        normalized === 'reversal'
+    ) {
+        return 'default';
+    }
+
+    if (normalized === 'debit') {
+        return 'destructive';
+    }
+
+    return 'outline';
+};
+
 export default function BillingPage({
     company,
     canTopUp,
     transactions,
     status,
+    statusType = 'success',
 }: {
     company: Company;
     canTopUp: boolean;
     transactions: PaginatedTransactions;
     status?: string;
+    statusType?: 'success' | 'error' | 'info';
 }) {
+    const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+    const [editingTransaction, setEditingTransaction] =
+        useState<BillingTransaction | null>(null);
+    const [deletingTransaction, setDeletingTransaction] =
+        useState<BillingTransaction | null>(null);
+    const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState('all');
+    const [sortBy, setSortBy] = useState('newest');
+
+    const visibleTransactions = useMemo(() => {
+        const term = search.trim().toLowerCase();
+
+        return [...transactions.data]
+            .filter((transaction) => {
+                const matchesSearch =
+                    term === '' ||
+                    transaction.type.toLowerCase().includes(term) ||
+                    (transaction.note ?? '').toLowerCase().includes(term);
+
+                const matchesType =
+                    typeFilter === 'all' ||
+                    transaction.type.toLowerCase() === typeFilter;
+
+                return matchesSearch && matchesType;
+            })
+            .sort((a, b) => {
+                if (sortBy === 'amount_desc') {
+                    return Number(b.amount) - Number(a.amount);
+                }
+
+                if (sortBy === 'amount_asc') {
+                    return Number(a.amount) - Number(b.amount);
+                }
+
+                if (sortBy === 'oldest') {
+                    return (
+                        new Date(a.created_at ?? 0).getTime() -
+                        new Date(b.created_at ?? 0).getTime()
+                    );
+                }
+
+                return (
+                    new Date(b.created_at ?? 0).getTime() -
+                    new Date(a.created_at ?? 0).getTime()
+                );
+            });
+    }, [transactions.data, search, typeFilter, sortBy]);
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Billing" />
 
-            <div className="space-y-6 p-4">
-                <Heading
-                    title="Billing"
-                    description="Top up your company airtime wallet and view billing ledger entries."
-                />
+            <ToastNotification message={status} type={statusType} />
 
-                {status && (
-                    <p className="text-sm font-medium text-green-600">{status}</p>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Current Balance</CardTitle>
+            <div className="space-y-6 p-4 md:p-6">
+                <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+                    <div>
+                        <Heading
+                            title="Billing"
+                            description="Top up your company wallet and review billing records with improved control."
+                        />
+                    </div>
+                    <Card className="border-border/70 shadow-sm">
+                        <CardHeader className="pb-2">
+                            <CardDescription className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                                <Wallet className="size-4" /> Current Wallet
+                                Balance
+                            </CardDescription>
+                            <CardTitle className="text-2xl">
+                                KES {company.airtime_balance}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-semibold">KES {company.airtime_balance}</div>
-                            <p className="mt-2 text-sm text-muted-foreground">{company.name}</p>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Quick Actions</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-x-4">
-                            <Link className="text-sm underline underline-offset-2" href={airtimeTransfersIndex()}>
-                                Go to airtime transfers
-                            </Link>
+                            <p className="text-sm text-muted-foreground">
+                                {company.name}
+                            </p>
                         </CardContent>
                     </Card>
                 </div>
 
                 {canTopUp && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Top Up Wallet</CardTitle>
+                    <Card className="border-border/70 shadow-sm">
+                        <CardHeader className="flex flex-row items-start justify-between gap-3">
+                            <div>
+                                <CardTitle className="inline-flex items-center gap-2">
+                                    <CircleDollarSign className="size-4" />
+                                    Wallet Top Up
+                                </CardTitle>
+                                <CardDescription>
+                                    Add funds to increase available airtime
+                                    credit.
+                                </CardDescription>
+                            </div>
+                            <Dialog
+                                open={isTopUpOpen}
+                                onOpenChange={setIsTopUpOpen}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        className="inline-flex items-center gap-2"
+                                    >
+                                        <PlusCircle className="size-4" /> Top Up
+                                        Balance
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-xl">
+                                    <DialogHeader>
+                                        <DialogTitle>Top Up Wallet</DialogTitle>
+                                        <DialogDescription>
+                                            Add funds to your company airtime
+                                            wallet.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <Form
+                                        {...storeTopUp.form()}
+                                        onSuccess={() => setIsTopUpOpen(false)}
+                                        className="grid gap-4 md:grid-cols-3"
+                                    >
+                                        {({ processing, errors }) => (
+                                            <>
+                                                <div className="grid gap-2">
+                                                    <Label htmlFor="amount">
+                                                        Amount (KES)
+                                                    </Label>
+                                                    <Input
+                                                        id="amount"
+                                                        name="amount"
+                                                        type="number"
+                                                        min="10"
+                                                        step="0.01"
+                                                        placeholder="5000"
+                                                        required
+                                                    />
+                                                    <InputError
+                                                        message={errors.amount}
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-2 md:col-span-2">
+                                                    <Label htmlFor="note">
+                                                        Note (optional)
+                                                    </Label>
+                                                    <Input
+                                                        id="note"
+                                                        name="note"
+                                                        placeholder="Mpesa top-up ref"
+                                                    />
+                                                    <InputError
+                                                        message={errors.note}
+                                                    />
+                                                </div>
+
+                                                <div className="md:col-span-3">
+                                                    <Button
+                                                        disabled={processing}
+                                                        className="inline-flex items-center gap-2"
+                                                    >
+                                                        {processing && (
+                                                            <Spinner className="size-4" />
+                                                        )}
+                                                        Top Up Balance
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </Form>
+                                </DialogContent>
+                            </Dialog>
                         </CardHeader>
-                        <CardContent>
-                            <Form {...storeTopUp.form()} className="grid gap-4 md:grid-cols-3">
-                                {({ processing, errors }) => (
-                                    <>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="amount">Amount (KES)</Label>
-                                            <Input
-                                                id="amount"
-                                                name="amount"
-                                                type="number"
-                                                min="10"
-                                                step="0.01"
-                                                placeholder="5000"
-                                                required
-                                            />
-                                            <InputError message={errors.amount} />
-                                        </div>
-
-                                        <div className="grid gap-2 md:col-span-2">
-                                            <Label htmlFor="note">Note (optional)</Label>
-                                            <Input
-                                                id="note"
-                                                name="note"
-                                                placeholder="Mpesa top-up ref"
-                                            />
-                                            <InputError message={errors.note} />
-                                        </div>
-
-                                        <div className="md:col-span-3">
-                                            <Button disabled={processing}>Top Up Balance</Button>
-                                        </div>
-                                    </>
-                                )}
-                            </Form>
-                        </CardContent>
                     </Card>
                 )}
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Billing Transactions</CardTitle>
+                <Card className="border-border/70 shadow-sm">
+                    <CardHeader className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <CardTitle>Billing Transactions</CardTitle>
+                                <CardDescription>
+                                    Use filters and sorting to find and manage
+                                    billing entries quickly.
+                                </CardDescription>
+                            </div>
+                            <Link
+                                href={airtimeTransfersIndex()}
+                                className="text-sm text-muted-foreground underline underline-offset-2"
+                            >
+                                Go to airtime transfers
+                            </Link>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-3">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+                                <Input
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(event.target.value)
+                                    }
+                                    className="pl-9"
+                                    placeholder="Search type or note"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Filter className="size-4 text-muted-foreground" />
+                                <Select
+                                    value={typeFilter}
+                                    onValueChange={setTypeFilter}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Filter type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">
+                                            All types
+                                        </SelectItem>
+                                        <SelectItem value="top_up">
+                                            Top Up
+                                        </SelectItem>
+                                        <SelectItem value="debit">
+                                            Debit
+                                        </SelectItem>
+                                        <SelectItem value="reversal">
+                                            Reversal
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <ArrowDownUp className="size-4 text-muted-foreground" />
+                                <Select
+                                    value={sortBy}
+                                    onValueChange={setSortBy}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Sort by" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="newest">
+                                            Newest first
+                                        </SelectItem>
+                                        <SelectItem value="oldest">
+                                            Oldest first
+                                        </SelectItem>
+                                        <SelectItem value="amount_desc">
+                                            Amount high to low
+                                        </SelectItem>
+                                        <SelectItem value="amount_asc">
+                                            Amount low to high
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                     </CardHeader>
+
                     <CardContent>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="text-muted-foreground">
+                        <div className="overflow-x-auto rounded-xl border border-border/60">
+                            <table className="w-full min-w-[900px] text-left text-sm">
+                                <thead className="bg-muted/40 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     <tr>
-                                        <th className="py-2">Type</th>
-                                        <th className="py-2">Amount</th>
-                                        <th className="py-2">Balance After</th>
-                                        <th className="py-2">Note</th>
-                                        <th className="py-2">Date</th>
+                                        <th className="px-4 py-3">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Signal className="size-4" />{' '}
+                                                Type
+                                            </span>
+                                        </th>
+                                        <th className="px-4 py-3">
+                                            <span className="inline-flex items-center gap-2">
+                                                <CircleDollarSign className="size-4" />{' '}
+                                                Amount
+                                            </span>
+                                        </th>
+                                        <th className="px-4 py-3">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Wallet className="size-4" />{' '}
+                                                Balance After
+                                            </span>
+                                        </th>
+                                        <th className="px-4 py-3">
+                                            <span className="inline-flex items-center gap-2">
+                                                <FileText className="size-4" />{' '}
+                                                Note
+                                            </span>
+                                        </th>
+                                        <th className="px-4 py-3">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Calendar className="size-4" />{' '}
+                                                Date
+                                            </span>
+                                        </th>
+                                        {canTopUp && (
+                                            <th className="px-4 py-3 text-right">
+                                                Actions
+                                            </th>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {transactions.data.map((transaction) => (
-                                        <tr key={transaction.id} className="border-t">
-                                            <td className="py-2">
-                                                <Badge variant="secondary">{transaction.type}</Badge>
+                                    {visibleTransactions.map((transaction) => (
+                                        <tr
+                                            key={transaction.id}
+                                            className="border-t border-border/60 transition-colors hover:bg-muted/30"
+                                        >
+                                            <td className="px-4 py-3">
+                                                <Badge
+                                                    variant={typeVariant(
+                                                        transaction.type,
+                                                    )}
+                                                    className="capitalize"
+                                                >
+                                                    {transaction.type.replace(
+                                                        '_',
+                                                        ' ',
+                                                    )}
+                                                </Badge>
                                             </td>
-                                            <td className="py-2">KES {transaction.amount}</td>
-                                            <td className="py-2">KES {transaction.balance_after}</td>
-                                            <td className="py-2">{transaction.note ?? '-'}</td>
-                                            <td className="py-2">{transaction.created_at ?? '-'}</td>
+                                            <td className="px-4 py-3 font-medium">
+                                                KES {transaction.amount}
+                                            </td>
+                                            <td className="px-4 py-3 font-medium">
+                                                KES {transaction.balance_after}
+                                            </td>
+                                            <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
+                                                <span className="block truncate">
+                                                    {transaction.note ?? '-'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-muted-foreground">
+                                                {transaction.created_at ?? '-'}
+                                            </td>
+                                            {canTopUp && (
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="inline-flex items-center gap-2">
+                                                        <Tooltip>
+                                                            <TooltipTrigger
+                                                                asChild
+                                                            >
+                                                                <Button
+                                                                    type="button"
+                                                                    size="icon"
+                                                                    variant="outline"
+                                                                    onClick={() =>
+                                                                        setEditingTransaction(
+                                                                            transaction,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <Pencil className="size-4" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                Edit note
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger
+                                                                asChild
+                                                            >
+                                                                <Button
+                                                                    type="button"
+                                                                    size="icon"
+                                                                    variant="outline"
+                                                                >
+                                                                    <MoreHorizontal className="size-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem
+                                                                    onClick={() =>
+                                                                        setEditingTransaction(
+                                                                            transaction,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <Pencil className="size-4" />{' '}
+                                                                    Edit
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem
+                                                                    variant="destructive"
+                                                                    disabled={
+                                                                        !transaction.can_delete
+                                                                    }
+                                                                    onClick={() =>
+                                                                        setDeletingTransaction(
+                                                                            transaction,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <Trash2 className="size-4" />{' '}
+                                                                    Delete
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
 
-                            {transactions.data.length === 0 && (
-                                <p className="py-6 text-sm text-muted-foreground">No billing records yet.</p>
+                            {visibleTransactions.length === 0 && (
+                                <p className="px-4 py-8 text-sm text-muted-foreground">
+                                    No billing records match your current
+                                    filters.
+                                </p>
                             )}
                         </div>
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog
+                open={editingTransaction !== null}
+                onOpenChange={(open) => !open && setEditingTransaction(null)}
+            >
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Edit Billing Transaction</DialogTitle>
+                        <DialogDescription>
+                            Update note for transaction #
+                            {editingTransaction?.id}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {editingTransaction && (
+                        <Form
+                            {...update.form({
+                                companyBillingTransaction:
+                                    editingTransaction.id,
+                            })}
+                            onSuccess={() => setEditingTransaction(null)}
+                            className="space-y-4"
+                        >
+                            {({ processing, errors }) => (
+                                <>
+                                    <div className="grid gap-2">
+                                        <Label>Type</Label>
+                                        <Input
+                                            value={editingTransaction.type}
+                                            disabled
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="edit_note">Note</Label>
+                                        <Input
+                                            id="edit_note"
+                                            name="note"
+                                            defaultValue={
+                                                editingTransaction.note ?? ''
+                                            }
+                                            placeholder="Transaction note"
+                                        />
+                                        <InputError message={errors.note} />
+                                    </div>
+                                    <DialogFooter>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() =>
+                                                setEditingTransaction(null)
+                                            }
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            disabled={processing}
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            {processing && (
+                                                <Spinner className="size-4" />
+                                            )}
+                                            Save Changes
+                                        </Button>
+                                    </DialogFooter>
+                                </>
+                            )}
+                        </Form>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={deletingTransaction !== null}
+                onOpenChange={(open) => !open && setDeletingTransaction(null)}
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Delete Billing Transaction</DialogTitle>
+                        <DialogDescription>
+                            This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {deletingTransaction && (
+                        <Form
+                            {...destroy.form({
+                                companyBillingTransaction:
+                                    deletingTransaction.id,
+                            })}
+                            onSuccess={() => setDeletingTransaction(null)}
+                            className="space-y-4"
+                        >
+                            {({ processing }) => (
+                                <>
+                                    <p className="text-sm text-muted-foreground">
+                                        Delete {deletingTransaction.type}{' '}
+                                        transaction of KES{' '}
+                                        {deletingTransaction.amount}?
+                                    </p>
+                                    <DialogFooter>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() =>
+                                                setDeletingTransaction(null)
+                                            }
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            disabled={processing}
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            {processing && (
+                                                <Spinner className="size-4" />
+                                            )}
+                                            Confirm Delete
+                                        </Button>
+                                    </DialogFooter>
+                                </>
+                            )}
+                        </Form>
+                    )}
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

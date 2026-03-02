@@ -42,3 +42,36 @@ test('dashboard shows only company recent transfers', function () {
         ->assertSee('254711111111')
         ->assertDontSee('254722222222');
 });
+
+test('dashboard includes webhook reporting metrics', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->create([
+        'company_id' => $company->id,
+    ]);
+
+    AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+        'status' => 'completed',
+        'result_description' => 'Operation successful.',
+    ]);
+
+    AirtimeTransfer::factory()->create([
+        'company_id' => $company->id,
+        'user_id' => $user->id,
+        'status' => 'failed',
+        'result_description' => 'Service temporarily unavailable.',
+        'meta' => [
+            'retryable' => true,
+            'escalated' => false,
+        ],
+    ]);
+
+    $response = $this->actingAs($user)->get(route('dashboard'));
+
+    $response->assertOk()
+        ->assertSee('Success Rate')
+        ->assertSee('Retry Pending')
+        ->assertSee('Failure Reasons')
+        ->assertSee('Service temporarily unavailable.');
+});

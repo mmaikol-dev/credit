@@ -37,7 +37,7 @@ export default function ToastNotification({
     const isSuccess = type === 'success';
 
     return (
-        <div className="fixed right-4 bottom-4 z-50 w-full max-w-md">
+        <div className="fixed top-4 left-1/2 z-50 w-full max-w-md -translate-x-1/2 px-4">
             <Alert variant={isError ? 'destructive' : 'default'}>
                 {isSuccess && <CheckCircle2 />}
                 {isError && <AlertCircle />}

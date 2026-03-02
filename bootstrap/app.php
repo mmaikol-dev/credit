@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->validateCsrfTokens(except: [
             'webhooks/statum/airtime',
+            'api/b2c/result',
+            'api/b2c/timeout',
+            'api/mpesa/b2b/result',
+            'api/mpesa/b2b/timeout',
         ]);
 
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
