@@ -2,6 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 import {
     ArrowDownUp,
     Calendar,
+    ChevronDown,
     CircleDollarSign,
     FileText,
     Filter,
@@ -26,6 +27,11 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
     Dialog,
     DialogContent,
@@ -395,7 +401,97 @@ export default function BillingPage({
                     </CardHeader>
 
                     <CardContent>
-                        <div className="overflow-x-auto rounded-xl border border-border/60">
+                        <div className="space-y-3 md:hidden">
+                            {visibleTransactions.map((transaction) => (
+                                <Collapsible
+                                    key={transaction.id}
+                                    className="rounded-xl border border-border/60 bg-card"
+                                >
+                                    <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-left">
+                                        <div className="space-y-1">
+                                            <Badge
+                                                variant={typeVariant(
+                                                    transaction.type,
+                                                )}
+                                                className="capitalize"
+                                            >
+                                                {transaction.type.replace(
+                                                    '_',
+                                                    ' ',
+                                                )}
+                                            </Badge>
+                                            <p className="text-sm font-medium">
+                                                KES {transaction.amount}
+                                            </p>
+                                        </div>
+                                        <ChevronDown className="size-4 text-muted-foreground" />
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="space-y-3 border-t border-border/60 px-4 py-3 text-sm">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground">
+                                                Balance after
+                                            </span>
+                                            <span className="font-medium">
+                                                KES {transaction.balance_after}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-muted-foreground">
+                                                Date
+                                            </span>
+                                            <span className="text-right">
+                                                {transaction.created_at ?? '-'}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-xs text-muted-foreground">
+                                                Note
+                                            </p>
+                                            <p className="text-sm">
+                                                {transaction.note ?? '-'}
+                                            </p>
+                                        </div>
+                                        {canTopUp && (
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        setEditingTransaction(
+                                                            transaction,
+                                                        )
+                                                    }
+                                                    className="flex-1"
+                                                >
+                                                    <Pencil className="size-4" />
+                                                    Edit
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    disabled={
+                                                        !transaction.can_delete
+                                                    }
+                                                    onClick={() =>
+                                                        setDeletingTransaction(
+                                                            transaction,
+                                                        )
+                                                    }
+                                                    className="flex-1"
+                                                >
+                                                    <Trash2 className="size-4" />
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            ))}
+                        </div>
+
+                        <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
                             <table className="w-full min-w-[900px] text-left text-sm">
                                 <thead className="bg-muted/40 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     <tr>
@@ -539,14 +635,13 @@ export default function BillingPage({
                                     ))}
                                 </tbody>
                             </table>
-
-                            {visibleTransactions.length === 0 && (
-                                <p className="px-4 py-8 text-sm text-muted-foreground">
-                                    No billing records match your current
-                                    filters.
-                                </p>
-                            )}
                         </div>
+
+                        {visibleTransactions.length === 0 && (
+                            <p className="rounded-xl border border-border/60 px-4 py-8 text-sm text-muted-foreground">
+                                No billing records match your current filters.
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
             </div>

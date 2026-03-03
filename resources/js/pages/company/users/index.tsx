@@ -2,6 +2,7 @@ import { Form, Head } from '@inertiajs/react';
 import {
     ArrowDownUp,
     Calendar,
+    ChevronDown,
     Mail,
     Filter,
     MoreHorizontal,
@@ -24,6 +25,11 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
     Dialog,
     DialogContent,
@@ -409,7 +415,78 @@ export default function CompanyUsersPage({
                     </CardHeader>
 
                     <CardContent>
-                        <div className="overflow-x-auto rounded-xl border border-border/60">
+                        <div className="space-y-3 md:hidden">
+                            {visibleUsers.map((user) => (
+                                <Collapsible
+                                    key={user.id}
+                                    className="rounded-xl border border-border/60 bg-card"
+                                >
+                                    <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-left">
+                                        <div>
+                                            <p className="font-medium">
+                                                {user.name}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {user.email}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Badge
+                                                variant={
+                                                    user.is_company_admin
+                                                        ? 'default'
+                                                        : 'secondary'
+                                                }
+                                            >
+                                                {user.is_company_admin
+                                                    ? 'Admin'
+                                                    : 'Member'}
+                                            </Badge>
+                                            <ChevronDown className="size-4 text-muted-foreground" />
+                                        </div>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="space-y-3 border-t border-border/60 px-4 py-3 text-sm">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground">
+                                                Joined
+                                            </span>
+                                            <span>{user.created_at ?? '-'}</span>
+                                        </div>
+                                        {canManageUsers && (
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        setEditingUser(user)
+                                                    }
+                                                    className="flex-1"
+                                                >
+                                                    <Pencil className="size-4" />
+                                                    Edit
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    disabled={isUserProtected(user)}
+                                                    onClick={() =>
+                                                        setDeletingUser(user)
+                                                    }
+                                                    className="flex-1"
+                                                >
+                                                    <Trash2 className="size-4" />
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            ))}
+                        </div>
+
+                        <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
                             <table className="w-full min-w-[860px] text-left text-sm">
                                 <thead className="bg-muted/40 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                     <tr>
@@ -542,13 +619,13 @@ export default function CompanyUsersPage({
                                     ))}
                                 </tbody>
                             </table>
-
-                            {visibleUsers.length === 0 && (
-                                <p className="px-4 py-8 text-sm text-muted-foreground">
-                                    No users match your current filters.
-                                </p>
-                            )}
                         </div>
+
+                        {visibleUsers.length === 0 && (
+                            <p className="rounded-xl border border-border/60 px-4 py-8 text-sm text-muted-foreground">
+                                No users match your current filters.
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
             </div>

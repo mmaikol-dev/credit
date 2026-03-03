@@ -141,5 +141,88 @@
 
     body {
         @apply bg-background text-foreground;
+        background-image:
+            radial-gradient(
+                70rem 45rem at -15% -15%,
+                oklch(0.94 0.045 155 / 0.35),
+                transparent 70%
+            ),
+            radial-gradient(
+                60rem 40rem at 120% 10%,
+                oklch(0.95 0.04 85 / 0.3),
+                transparent 70%
+            );
+        background-attachment: fixed;
+    }
+
+    .dark body {
+        background-image:
+            radial-gradient(
+                70rem 45rem at -15% -15%,
+                oklch(0.34 0.06 155 / 0.22),
+                transparent 70%
+            ),
+            radial-gradient(
+                60rem 40rem at 120% 10%,
+                oklch(0.36 0.05 85 / 0.2),
+                transparent 70%
+            );
+    }
+}
+
+@layer utilities {
+    @keyframes float-slow {
+        0%,
+        100% {
+            transform: translateY(0) rotate(0deg);
+        }
+        50% {
+            transform: translateY(-10px) rotate(1deg);
+        }
+    }
+
+    @keyframes float-medium {
+        0%,
+        100% {
+            transform: translateY(0) rotate(0deg);
+        }
+        50% {
+            transform: translateY(-14px) rotate(-1deg);
+        }
+    }
+
+    .animate-float-slow {
+        animation: float-slow 6s ease-in-out infinite;
+    }
+
+    .animate-float-medium {
+        animation: float-medium 7.5s ease-in-out infinite;
+    }
+
+    @keyframes float-long {
+        0%,
+        100% {
+            transform: translateY(0) translateX(0) rotate(0deg);
+        }
+        50% {
+            transform: translateY(-18px) translateX(6px) rotate(1.5deg);
+        }
+    }
+
+    @keyframes scroll-up-soft {
+        0% {
+            transform: translateY(0);
+        }
+        100% {
+            transform: translateY(-50%);
+        }
+    }
+
+    .animate-float-long {
+        animation: float-long 9s ease-in-out infinite;
+    }
+
+    .animate-scroll-up-soft {
+        animation: scroll-up-soft 16s linear infinite;
     }
 }

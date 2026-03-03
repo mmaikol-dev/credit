@@ -19,9 +19,9 @@ use Throwable;
 class AirtimeTransferController extends Controller
 {
     /**
-     * @var list<string>
+     * @var string[]
      */
-    private const array RETRYABLE_RESULT_CODES = ['408', '429', '500', '502', '503', '504'];
+    private const RETRYABLE_RESULT_CODES = ['408', '429', '500', '502', '503', '504'];
 
     public function __construct(
         private readonly StatumAirtimeClient $statumAirtimeClient,
